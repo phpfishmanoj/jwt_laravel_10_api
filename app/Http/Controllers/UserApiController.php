@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Validator;
 
 class UserApiController extends Controller
@@ -32,7 +33,8 @@ class UserApiController extends Controller
             ['password' => bcrypt($request->password)]
         ));
         return response()->json([
-            'message' => 'User successfully registered',
+            'status' => 200,
+            'message' => 'User successfully created',
             'user' => $user
         ], 201);
     }
@@ -54,8 +56,12 @@ class UserApiController extends Controller
 
     public function logout()
     {
-        auth()->logout();
-        return response()->json(['message' => 'User successfully signed out']);
+        try {
+            auth()->logout();
+            return response()->json(['status' => 200, 'message' => 'User successfully signed out']);
+        } catch (\Exception $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()]);
+        }
     }
 
     public function refresh()
@@ -64,7 +70,44 @@ class UserApiController extends Controller
     }
     public function profile()
     {
-        return response()->json(auth()->user());
+        try {
+            return response()->json(auth()->user());
+        } catch (\Exception $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function update_profile(User $user)
+    {
+        //dd($user);
+        request()->validate([
+            'name' => 'required|string',
+            'email' => 'required|email|unique:users,email,' . auth()->user()->id,
+            'password' => 'sometimes|min:8',
+            'contact' => 'required|numeric|digits_between:10,11',
+            'dob' => 'required|date|date_format:Y-m-d|before:' . \Carbon\Carbon::now()->subYears(18)->format('Y-m-d'),
+        ], [
+            'dob.before' => 'Age must be 18+.',
+
+        ]);
+        try {
+
+            $user = Auth::user();
+            $user->name = request('name');
+            $user->email = request('email');
+            $user->dob = request('dob');
+            $user->password = request('password') ? bcrypt(request('password')) : auth()->user()->password;
+            $user->updated_at = now();
+            $user->save();
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'User successfully updated',
+                'user' => $user
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json($e->getMessage(), 400);
+        }
     }
 
     protected function createNewToken($token)
